@@ -81,6 +81,28 @@ button:focus-visible{outline:3px solid var(--box);outline-offset:2px}
     var s=Math.floor(ms/1000), m=Math.floor(s/60); s%=60;
     return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
   }
+
+  // I Android-appen sköts mätningen av en förgrundstjänst (fungerar med låst skärm).
+  // Sidan visar bara värdena den rapporterar.
+  if(window.Run){
+    var N=window.Run;
+    var show=function(){
+      try{
+        var s=JSON.parse(N.state());
+        $('time').textContent=fmt(s.ms);
+        $('dist').textContent=Math.round(s.m);
+        $('status').textContent=s.status;
+        $('start').classList.toggle('on',s.running);
+      }catch(e){}
+    };
+    $('start').onclick=function(){N.start();show();};
+    $('stop').onclick=function(){N.stop();show();};
+    $('clear').onclick=function(){N.clear();show();};
+    setInterval(show,250); show();
+    return;
+  }
+
+  // Webbläsarläge (t.ex. GitHub Pages): mätning direkt i sidan.
   function render(){
     $('time').textContent=fmt(elapsed+(running?Date.now()-t0:0));
     $('dist').textContent=Math.round(meters);
