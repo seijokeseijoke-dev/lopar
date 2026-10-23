@@ -1,0 +1,46 @@
+name: Bygg APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Kopiera webbsidan in i appen
+        run: cp index.html app/src/main/assets/index.html
+
+      - name: Bygg APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Döp om APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk lopar.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lopar-apk
+          path: lopar.apk
+
+      - name: Publicera som release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Löpar v1.0.${{ github.run_number }}
+          body: Ladda ner lopar.apk på telefonen och installera.
+          files: lopar.apk
