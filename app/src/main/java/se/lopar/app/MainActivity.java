@@ -82,6 +82,16 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void close() {
+            runOnUiThread(() -> {
+                // Avsluta passet, ta bort notisen och stäng appen helt.
+                stopService(new Intent(MainActivity.this, RunService.class));
+                RunService.resetIdle();
+                finishAndRemoveTask();
+            });
+        }
+
+        @JavascriptInterface
         public String state() {
             String st = RunService.status.replace("\\", "\\\\").replace("\"", "\\\"");
             return "{\"running\":" + RunService.running

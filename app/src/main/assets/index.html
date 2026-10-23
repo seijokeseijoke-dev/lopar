@@ -45,6 +45,12 @@ button:focus-visible{outline:3px solid var(--box);outline-offset:2px}
 .value{font-size:clamp(1.8rem,9vw,2.8rem);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .unit{font-size:.5em;font-weight:500;color:var(--muted)}
 #status{text-align:center;color:var(--muted);font-size:.85rem;margin-top:20px;min-height:1.2em}
+.closebox{display:flex;flex-direction:column;align-items:center;gap:6px}
+.closelabel{font-size:.9rem;border:1px solid var(--btn-edge);padding:2px 8px}
+#close{width:72px;height:46px;border-radius:50%;background:#e01b1b;border:2px solid #1b1f1c;position:relative}
+#close::before,#close::after{content:"";position:absolute;left:50%;top:50%;width:62px;height:2px;background:#1b1f1c;transform:translate(-50%,-50%) rotate(32deg)}
+#close::after{transform:translate(-50%,-50%) rotate(-32deg)}
+#close.arm{outline:3px solid #e01b1b;outline-offset:3px}
 @media (max-width:380px){.round{width:72px}#clear{width:80px;height:80px}.panel{gap:10px}}
 </style>
 </head>
@@ -53,6 +59,10 @@ button:focus-visible{outline:3px solid var(--box);outline-offset:2px}
   <div class="left">
     <button id="start" class="round">Start</button>
     <button id="stop" class="round">Stop</button>
+    <div class="closebox" id="closebox" hidden>
+      <span class="closelabel">Close app</span>
+      <button id="close" aria-label="Close app"></button>
+    </div>
   </div>
   <div class="mid">
     <div class="field">
@@ -98,7 +108,19 @@ button:focus-visible{outline:3px solid var(--box);outline-offset:2px}
     $('start').onclick=function(){N.start();show();};
     $('stop').onclick=function(){N.stop();show();};
     $('clear').onclick=function(){N.clear();show();};
-    setInterval(show,250); show();
+    // Stäng appen. Under pågående pass krävs två tryck, så ett misstag inte avbryter passet.
+    var armed=null;
+    $('closebox').hidden=false;
+    $('close').onclick=function(){
+      var s={};try{s=JSON.parse(N.state());}catch(e){}
+      if(s.running && !armed){
+        $('close').classList.add('arm');
+        armed=setTimeout(function(){armed=null;$('close').classList.remove('arm');},3000);
+        return;
+      }
+      N.close();
+    };
+    setInterval(function(){ if(!armed) show(); else { show(); $('status').textContent='Tryck igen för att stänga'; } },250); show();
     return;
   }
 
