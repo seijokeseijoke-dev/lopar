@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Run Tracker</title>
+<style>
+/* Layout: knappar Start/Stop vänster, Distance/Time mitten, Clear values höger (enligt skiss) */
+:root{
+  --bg:#ffffff; --fg:#1b1f1c; --muted:#5f6b63;
+  --box:#3a9a3a; --btn:#f2f4f3; --btn-edge:#c9cfcb; --active:#2f8a2f;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#121513;--fg:#eef2ef;--muted:#9aa69e;--box:#4fbf4f;--btn:#232825;--btn-edge:#3a413c;--active:#4fbf4f;color-scheme:dark}
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg);color:var(--fg);
+  font:16px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  display:flex;flex-direction:column;justify-content:center;
+}
+.panel{
+  display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;
+  max-width:560px;width:100%;margin:0 auto;
+}
+.left{display:flex;flex-direction:column;gap:28px}
+.mid{display:flex;flex-direction:column;gap:20px;min-width:0}
+button{
+  font:inherit;color:var(--fg);background:var(--btn);
+  border:1px solid var(--btn-edge);border-radius:999px;cursor:pointer;
+  box-shadow:0 3px 6px rgba(0,0,0,.15);
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+button:active{transform:translateY(1px);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+button:focus-visible{outline:3px solid var(--box);outline-offset:2px}
+.round{width:88px;height:56px;font-weight:600}
+#clear{width:96px;height:96px;border-radius:50%;line-height:1.15}
+#start.on{background:var(--active);color:#fff;border-color:var(--active)}
+.field{border:2px solid var(--box);padding:6px 10px 10px}
+.label{font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.value{font-size:clamp(1.8rem,9vw,2.8rem);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.unit{font-size:.5em;font-weight:500;color:var(--muted)}
+#status{text-align:center;color:var(--muted);font-size:.85rem;margin-top:20px;min-height:1.2em}
+@media (max-width:380px){.round{width:72px}#clear{width:80px;height:80px}.panel{gap:10px}}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="left">
+    <button id="start" class="round">Start</button>
+    <button id="stop" class="round">Stop</button>
+  </div>
+  <div class="mid">
+    <div class="field">
+      <div class="label">Distance</div>
+      <div class="value"><span id="dist">0</span> <span class="unit">m</span></div>
+    </div>
+    <div class="field">
+      <div class="label">Time</div>
+      <div class="value" id="time">00:00</div>
+    </div>
+  </div>
+  <button id="clear">Clear<br>values</button>
+</div>
+<div id="status">Tryck Start</div>
+
+<script>
+(function(){
+  var MAX_ACC = 25;     // ignorera GPS-punkter sämre än 25 m noggrannhet
+  var MIN_STEP = 3;     // ignorera rörelser under 3 m (GPS-brus)
+  var MAX_SPEED = 12;   // m/s, filtrerar orimliga hopp
+
+  var running=false, elapsed=0, t0=0, meters=0, last=null, watchId=null, tick=null, lock=null;
+  var $=function(id){return document.getElementById(id)};
+
+  function fmt(ms){
+    var s=Math.floor(ms/1000), m=Math.floor(s/60); s%=60;
+    return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+  }
+  function render(){
+    $('time').textContent=fmt(elapsed+(running?Date.now()-t0:0));
+    $('dist').textContent=Math.round(meters);
+  }
+  function hav(a,b){
+    var R=6371000,r=Math.PI/180,
+        dLat=(b.lat-a.lat)*r,dLon=(b.lon-a.lon)*r,
+        x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+  }
+  function onPos(p){
+    var c=p.coords, pt={lat:c.latitude,lon:c.longitude,t:p.timestamp};
+    $('status').textContent='GPS ±'+Math.round(c.accuracy)+' m';
+    if(c.accuracy>MAX_ACC) return;
+    if(!last){last=pt;return;}
+    var d=hav(last,pt), dt=(pt.t-last.t)/1000;
+    if(d<MIN_STEP) return;
+    if(dt>0 && d/dt>MAX_SPEED){last=pt;return;}
+    meters+=d; last=pt; render();
+  }
+  function onErr(e){
+    $('status').textContent = e.code===1 ? 'Platsåtkomst nekad – tillåt plats i webbläsaren' : 'GPS-fel: '+e.message;
+  }
+  async function wake(){
+    try{ if('wakeLock' in navigator) lock=await navigator.wakeLock.request('screen'); }catch(e){}
+  }
+  function start(){
+    if(running) return;
+    if(!('geolocation' in navigator)){ $('status').textContent='GPS saknas i denna webbläsare'; }
+    else watchId=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+    last=null; running=true; t0=Date.now();
+    tick=setInterval(render,250);
+    $('start').classList.add('on'); $('status').textContent='Söker GPS…';
+    wake();
+  }
+  function stop(){
+    if(!running) return;
+    elapsed+=Date.now()-t0; running=false;
+    clearInterval(tick);
+    if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+    last=null;
+    if(lock){lock.release().catch(function(){});lock=null;}
+    $('start').classList.remove('on'); $('status').textContent='Pausad';
+    render();
+  }
+  function clear(){
+    stop(); elapsed=0; meters=0; last=null;
+    $('status').textContent='Tryck Start'; render();
+  }
+  $('start').onclick=start; $('stop').onclick=stop; $('clear').onclick=clear;
+  document.addEventListener('visibilitychange',function(){ if(running&&document.visibilityState==='visible') wake(); });
+  render();
+})();
+</script>
+</body>
+</html>
